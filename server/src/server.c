@@ -24,11 +24,17 @@ int getSaltKey(char *oSalt) {
     write(STDOUT_FILENO, salt, SALT_LEN);
     write(STDOUT_FILENO, "\n", 1);
 
+    strcpy(oSalt, salt);
+
     return 0;
 }
 
-int calculateHash(char* iPassword, char* oHash) {
+int calculateHash(char* iPassword, char* salt, char* oHash) {
     char hash[HASH_LEN+1];
+    char toBeHashed[strlen(iPassword) + SALT_LEN+ 1];
+
+    strcpy(toBeHashed, iPassword);
+    strcat(toBeHashed, salt);
 
     //pipe to catch child's output
     int pipe1[2]; // pipe between child processes
@@ -60,7 +66,7 @@ int calculateHash(char* iPassword, char* oHash) {
         close(pipe1[WRITE]);
         close(pipe1[READ]);
         // execute sha256sum command 
-        execlp("echo", "echo", "-n", iPassword, NULL);
+        execlp("echo", "echo", "-n", toBeHashed, NULL);
         exit(1);
     }
 
@@ -111,9 +117,8 @@ int calculateHash(char* iPassword, char* oHash) {
 
     // make sure the hash has not too many chars
     strcpy(oHash, strtok(hash, " "));
-    write(STDERR_FILENO, hash, strlen(oHash));
-
-    //strcpy(outputStr, strtok(outputStr, "\n"));
+    write(STDOUT_FILENO, hash, 64);
+    write(STDOUT_FILENO, "\n", 1);
 
     return 0;
 }
@@ -124,9 +129,17 @@ void createAdminAccount(char password[]) {
     adminAcc.account_id = ADMIN_ACCOUNT_ID;
     adminAcc.balance = 0;
 
-    char* hash, *salt;
-    getSaltKey(salt);
-    calculateHash(password, hash);
+    //char *hash, *salt;
+    getSaltKey(adminAcc.salt);
+    calculateHash(password, adminAcc.salt, adminAcc.hash);
+
+    accounts[0] = adminAcc;
+
+    write(STDOUT_FILENO, accounts[0].salt, 64);
+    write(STDOUT_FILENO, "\n", 1);
+
+    write(STDOUT_FILENO, accounts[0].hash, 64);
+    write(STDOUT_FILENO, "\n", 1);
 }
 
 int argumentHandler(int argc, char ** argv) {
@@ -152,7 +165,7 @@ int main(int argc, char ** argv) {
 
     srand(time(NULL));
 
-    if (argumentHandler(argc, argv))
+    if (argumentHandler(argc, argv)) // handles the arguments and creates admin account
         exit(1);
 
     return 0;
