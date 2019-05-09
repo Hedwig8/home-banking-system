@@ -1,15 +1,31 @@
+#include <stdlib.h>
+#include <string.h>
 
 // provided files
-#include <sope.h>
+#include "sope.h"
 
 #define WRITE 1
 #define READ 0
 
-
 // array of accounts
 //void *accounts[MAX_BANK_ACCOUNTS] = {NULL};
-bank_account_t accounts[MAX_BANK_ACCOUNTS] = {NULL};
+bank_account_t accounts[MAX_BANK_ACCOUNTS] = {0};
 int threadNum;
+const char alphaNum[] = "0123456789abcdefghijklmnopqrstuwxyz";
+
+int getSaltKey(char *oSalt) {
+    int length = strlen(alphaNum);
+    char salt[SALT_LEN];
+
+    for(int i = 0; i < SALT_LEN; i++) {
+        salt[i] = alphaNum[rand() % length];
+    }
+
+    write(STDOUT_FILENO, salt, SALT_LEN);
+    write(STDOUT_FILENO, "\n", 1);
+
+    return 0;
+}
 
 int calculateHash(char* iPassword, char* oHash) {
     char hash[HASH_LEN+1];
@@ -95,6 +111,7 @@ int calculateHash(char* iPassword, char* oHash) {
 
     // make sure the hash has not too many chars
     strcpy(oHash, strtok(hash, " "));
+    write(STDERR_FILENO, hash, strlen(oHash));
 
     //strcpy(outputStr, strtok(outputStr, "\n"));
 
@@ -107,14 +124,22 @@ void createAdminAccount(char password[]) {
     adminAcc.account_id = ADMIN_ACCOUNT_ID;
     adminAcc.balance = 0;
 
-
+    char* hash, *salt;
+    getSaltKey(salt);
+    calculateHash(password, hash);
 }
 
 int argumentHandler(int argc, char ** argv) {
-    if(argc != 3) return 1;
+    if(argc != 3) {
+        write(STDERR_FILENO, "usage: server <no of bank offices> <admin password>\n", 53);
+        return 1;
+    }
 
     threadNum = atoi(argv[1]);
-    if(threadNum <= 0 || threadNum > MAX_BANK_OFFICES) return 1;
+    if(threadNum <= 0 || threadNum > MAX_BANK_OFFICES) {
+        write(STDERR_FILENO, "range of bank offices must be between 1 and 99, inclusive\n", 59); 
+        return 1;
+    }
 
     createAdminAccount(argv[2]);
 }
@@ -124,6 +149,8 @@ int createAccount(int accountID, char* password, int value) {
 }
 
 int main(int argc, char ** argv) {
+
+    srand(time(NULL));
 
     if (argumentHandler(argc, argv))
         exit(1);

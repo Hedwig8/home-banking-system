@@ -1,4 +1,5 @@
 # Change to executable name.
+PROG := server
 SRV := server
 USR := user 
 INC := 
