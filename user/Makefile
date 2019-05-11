@@ -1,6 +1,6 @@
 # Change to executable name.
-SRV := server
-USR := user 
+
+PROG := user
 INC := 
 # Add whatever compiler flags you want.
 CXXFLAGS := 
