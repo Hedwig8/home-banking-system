@@ -21,9 +21,6 @@ int getSaltKey(char *oSalt) {
         salt[i] = alphaNum[rand() % length];
     }
 
-    write(STDOUT_FILENO, salt, SALT_LEN);
-    write(STDOUT_FILENO, "\n", 1);
-
     strcpy(oSalt, salt);
 
     return 0;
@@ -117,8 +114,6 @@ int calculateHash(char* iPassword, char* salt, char* oHash) {
 
     // make sure the hash has not too many chars
     strcpy(oHash, strtok(hash, " "));
-    write(STDOUT_FILENO, hash, 64);
-    write(STDOUT_FILENO, "\n", 1);
 
     return 0;
 }
@@ -129,17 +124,12 @@ void createAdminAccount(char password[]) {
     adminAcc.account_id = ADMIN_ACCOUNT_ID;
     adminAcc.balance = 0;
 
-    //char *hash, *salt;
     getSaltKey(adminAcc.salt);
     calculateHash(password, adminAcc.salt, adminAcc.hash);
 
     accounts[0] = adminAcc;
 
-    write(STDOUT_FILENO, accounts[0].salt, 64);
-    write(STDOUT_FILENO, "\n", 1);
-
-    write(STDOUT_FILENO, accounts[0].hash, 64);
-    write(STDOUT_FILENO, "\n", 1);
+    logAccountCreation(STDOUT_FILENO, 0, &adminAcc);
 }
 
 int argumentHandler(int argc, char ** argv) {
@@ -161,12 +151,19 @@ int createAccount(int accountID, char* password, int value) {
 
 }
 
+void* thr_fifo_answer(void * arg) {
+    tlv_request_t req = *(tlv_request_t *) arg;
+}
+
+
 int main(int argc, char ** argv) {
 
     srand(time(NULL));
 
     if (argumentHandler(argc, argv)) // handles the arguments and creates admin account
         exit(1);
+
+
 
     return 0;
 }
