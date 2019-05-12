@@ -1,5 +1,8 @@
 #pragma once
 
+#define WRITE 1
+#define READ 0
+
 #define MAX_BANK_OFFICES 99
 #define MAX_BANK_ACCOUNTS 4096
 #define MIN_BALANCE 1UL
