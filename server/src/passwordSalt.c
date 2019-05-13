@@ -2,17 +2,28 @@
 
 const char alphaNum[] = "0123456789abcdefghijklmnopqrstuwxyz";
 
-int getSaltKey(char *oSalt) {
+// int getSaltKey(char *oSalt) {
+//     int length = strlen(alphaNum);
+//     char salt[SALT_LEN+1];
+
+//     for(int i = 0; i < SALT_LEN; i++) {
+//         salt[i] = alphaNum[rand() % length];
+//     }
+
+//     strcpy(oSalt, salt);
+
+//     return 0;
+// }
+
+char* getSaltKey() {
     int length = strlen(alphaNum);
-    char salt[SALT_LEN];
+    char *salt = calloc(SALT_LEN, sizeof(char));
 
     for(int i = 0; i < SALT_LEN; i++) {
         salt[i] = alphaNum[rand() % length];
     }
 
-    strcpy(oSalt, salt);
-
-    return 0;
+    return salt;
 }
 
 int calculateHash(char* iPassword, char* salt, char* oHash) {

@@ -7,7 +7,7 @@
 #include "sope.h"
 
 
-int getSaltKey(char *oSalt);
+char * getSaltKey();
 
 int calculateHash(char* iPassword, char* salt, char* oHash);
 

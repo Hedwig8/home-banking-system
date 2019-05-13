@@ -9,7 +9,9 @@ void createAdminAccount(char password[]) {
     adminAcc.account_id = ADMIN_ACCOUNT_ID;
     adminAcc.balance = 0;
 
-    getSaltKey(adminAcc.salt);
+    //char *auxstr = calloc(SALT_LEN, sizeof(char));
+    //getSaltKey(auxstr);
+    strcpy(adminAcc.salt, getSaltKey());
     calculateHash(password, adminAcc.salt, adminAcc.hash);
 
     accounts[0] = adminAcc;

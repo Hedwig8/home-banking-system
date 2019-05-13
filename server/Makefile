@@ -1,9 +1,10 @@
 # Change to executable name.
 PROG := server
 INC := 
+CC := gcc
 # Add whatever compiler flags you want.
 CXXFLAGS := 
-CXXFLAGS += -Wall -Wextra -Werror $(INC)
+CXXFLAGS += -Wall -Wextra -Werror -pthread -D_REENTRANT $(INC)
 
 # You MUST keep this for auto-dependency generation.
 CXXFLAGS += -MMD
@@ -32,7 +33,8 @@ all: $(PROG)
 
 # Calls the compiler with flags to link all object files together.
 $(PROG): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDLIBS) $(OBJS) -o $(PROG)
+	$(CC) $(CXXFLAGS) $(LDLIBS) $(OBJS) -o $(PROG)
+	rm -f $(DEPS) $(OBJS)
 
 # Includes the dependency lists (.d files).
 -include $(DEPS)
@@ -41,7 +43,6 @@ $(PROG): $(OBJS)
 clean:
 	rm -f $(PROG)
 	rm -f $(DEPS) $(OBJS)
-	rm -f app.xml
 
 run: all
 	./$(PROG)
