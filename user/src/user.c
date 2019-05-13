@@ -1,5 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 //provided code
 #include "sope.h"
@@ -55,10 +59,16 @@ int requestPackagePrep(char * argv[], tlv_request_t *req) {
 
 int main(int argc, char * argv[]) {
 
-    if (argumentHandler(argc, argv)) return 1;
+    //if (argumentHandler(argc, argv)) return 1;
 
-    tlv_request_t request;
-    requestPackagePrep(argv, &request);
+    //tlv_request_t request;
+    //requestPackagePrep(argv, &request);
+
+    int fifoFd = open(SERVER_FIFO_PATH, O_WRONLY | O_NONBLOCK);
+
+    fprintf(stderr, "%d", fifoFd);
+
+    if(fifoFd != -1) close(fifoFd);
 
     return 0;
 }

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 
 #include "dataManip.h"
 
@@ -38,8 +39,10 @@ int main(int argc, char ** argv) {
     if (argumentHandler(argc, argv)) // handles the arguments and creates admin account
         exit(1);
 
-    // creates FIFO to communication
-    mkfifo(SERVER_FIFO_PATH, 666);
+    // creates and opens FIFO to communication
+
+    if(open(SERVER_FIFO_PATH, O_RDONLY | O_CREAT | O_EXCL, 0666) == -1) 
+        exit(1);
 
     sleep(10);
 
