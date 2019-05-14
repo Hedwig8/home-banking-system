@@ -253,5 +253,5 @@ int main(int argc, char *argv[])
 
     logReply(logFd, getpid(), &reply);
 
-    return 0;
+    exit(0);
 }

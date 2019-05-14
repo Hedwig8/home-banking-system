@@ -38,7 +38,17 @@ int argumentHandler(int argc, char **argv)
 
 void *thr_fifo_answer(void *arg)
 {
-    int num = *(int *)arg;
+    int tid = *(int *)arg;
+
+    while(!srvShutdown) {
+        while(!isEmptyQueue(&q)) {
+            tlv_request_t req;
+            dequeue(&q, &req);
+            write(STDOUT_FILENO, "tlv received", 13);
+            logRequest(STDOUT_FILENO, tid, &req);
+            srvShutdown = true;
+        }
+    }
 }
 
 void closeFd(int r, void* arg) {
@@ -73,7 +83,8 @@ int main(int argc, char **argv)
     pthread_t threads[threadNum];
     for (int i = 0; i < threadNum; i++)
     {
-        pthread_create(&threads[i], NULL, thr_fifo_answer, &i);
+        int tid = i;
+        pthread_create(&threads[i], NULL, thr_fifo_answer, &tid);
         fprintf(stdout, "loop: %d\n", i);
     }
 
@@ -85,14 +96,9 @@ int main(int argc, char **argv)
     {
         // reads request
         tlv_request_t req;
-        if ( read(fifoFd, &req, 1000) > 0)
+        if ( read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
         {
-            //enqueue(&q, &req);
-            if (req.type == OP_SHUTDOWN)
-            {
-                logRequest(STDOUT_FILENO, 0, &req);
-                srvShutdown = true;
-            }
+            enqueue(&q, &req);
         }
     }
 
