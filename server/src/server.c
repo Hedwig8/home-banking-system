@@ -39,7 +39,14 @@ int argumentHandler(int argc, char **argv)
 void *thr_fifo_answer(void *arg)
 {
     int num = *(int *)arg;
-    fprintf(stdout, "thread: %d\n", num);
+}
+
+void closeFd(int r, void* arg) {
+    close(*(int*)arg);
+}
+
+void removePath(int r, void* arg) {
+    unlink((char *) arg);
 }
 
 int main(int argc, char **argv)
@@ -51,8 +58,15 @@ int main(int argc, char **argv)
         exit(1);
 
     // creates and opens FIFO to communication
-    int fifoFd;
-    if ((fifoFd = open(SERVER_FIFO_PATH, O_RDONLY | O_CREAT | O_EXCL, 0666)) == -1)
+    
+    if(mkfifo(SERVER_FIFO_PATH, 0666) != 0)
+    {
+        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be created successfully\n", 55);
+        exit(1);
+    } 
+    else on_exit(removePath, SERVER_FIFO_PATH);
+    int fifoFd= open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
+    if (fifoFd == -1)
         exit(1);
 
     // creation of threads
@@ -70,12 +84,15 @@ int main(int argc, char **argv)
     while (!srvShutdown)
     {
         // reads request
-        tlv_request_t *req = NULL;
-        read(fifoFd, req, sizeof(req));
-
-        // if request 
-        if(&req != NULL) {
-            enqueue(&q, req);
+        tlv_request_t req;
+        if ( read(fifoFd, &req, 1000) > 0)
+        {
+            //enqueue(&q, &req);
+            if (req.type == OP_SHUTDOWN)
+            {
+                logRequest(STDOUT_FILENO, 0, &req);
+                srvShutdown = true;
+            }
         }
     }
 
