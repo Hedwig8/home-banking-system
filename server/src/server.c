@@ -40,14 +40,45 @@ void *thr_fifo_answer(void *arg)
 {
     int tid = *(int *)arg;
 
+    //Isto deveria ser global para depois ser destruida no main?
+    //A queue nessecita de mutex #420Questions
+    //pthread_cond_t queueMutex = PTHREAD_COND_INITIALIZER;
+
     while(!srvShutdown) {
         while(!isEmptyQueue(&q)) {
+            //pthread_mutex_lock (queueMutex);
             tlv_request_t req;
             dequeue(&q, &req);
+            //fuc para tratar do pedido
             write(STDOUT_FILENO, "tlv received", 13);
             logRequest(STDOUT_FILENO, tid, &req);
             srvShutdown = true;
+            //pthread_mutex_unlock (queueMutex);
         }
+    }
+
+    //pthread_mutex_destroy (queueMutex);
+}
+
+void processRequest (tlv_request_t req) {
+    switch (req.type)
+    {
+    case OP_CREATE_ACCOUNT:
+        break;
+
+    case OP_BALANCE:
+        break;
+
+    case OP_TRANSFER:
+        break;
+
+    case OP_SHUTDOWN:
+        if (req.value.header.account_id == 0)
+            srvShutdown = true;
+        break;
+
+    default:
+        break;
     }
 }
 
