@@ -10,21 +10,15 @@
 #include "utils.h"
 
 // current number of threads
-int threadNum, logFd;
+int threadNum, logFd, fifoFd;
 Queue q;
 bool srvShutdown = false;
-pthread_mutex_t queueMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t accountsAccessMutex = PTHREAD_MUTEX_INITIALIZER;
 
-void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
+void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
 
     bool verification = true;
     bank_account_t acc;
-
-    /**
-     *  MUTEX
-     *  LOCK
-     * 
-     */
 
 
     // check if exists
@@ -58,12 +52,6 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
                 break;
         }
         rep->length = sizeof(rep->value);
-        /**
-         * 
-         * MUTEX
-         * UNLOCK
-         * 
-         */
         return;
     }
 
@@ -77,11 +65,11 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
             break;
         }
 
-        // acc must not exist
-        if(createAccount(req->value.create)) {
-            rep->value.header.ret_code = RC_ID_IN_USE;
-            break;
-        }
+        // delay
+        logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
+        usleep(req->value.header.op_delay_ms*1000);
+        // creates acc and fills rep's ret code
+        createAccount(req->value.create, rep);
 
         break;
 
@@ -92,6 +80,11 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
             break;
         }
 
+        // delay
+        logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
+        usleep(req->value.header.op_delay_ms*1000);
+
+        getBalance(req->value.header, rep);
 
         break;
 
@@ -101,6 +94,13 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
             rep->value.header.ret_code = RC_OP_NALLOW;
             break;
         }
+
+        // delay
+        logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
+        usleep(req->value.header.op_delay_ms*1000);
+
+        consumeTransfer(req->value.header, req->value.transfer, rep);
+
         break;
 
     case OP_SHUTDOWN:
@@ -110,6 +110,21 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
             break;
         }
 
+        // delay
+        logDelay(logFd, tid, req->value.header.op_delay_ms);
+        usleep(req->value.header.op_delay_ms*1000);
+
+        // changes fifo permissions to r--r--r--
+        fchmod(fifoFd, 0444);
+
+        /**
+         * 
+         * LACKS ACTIVE OFFICES COUNTER 
+         * OR SOMETHING
+         * TO BE ADDED LATER
+         * 
+         */
+
         srvShutdown = true;
         break;
 
@@ -117,37 +132,52 @@ void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
         break;
     }
 
-
+    rep->length = sizeof(rep->value);
 }
 
-void sendReply(tlv_reply_t *rep) {
+void sendReply(tlv_reply_t *rep, int pid, int tid) {
+    char fifostr[USER_FIFO_PATH_LEN];
+    sprintf(fifostr, "%s%05d", USER_FIFO_PATH_PREFIX, pid);
 
+    int repFifo;
+    if((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK) == -1)) {
+        rep->value.header.ret_code = RC_USR_DOWN;
+        return;
+    }
+
+    write(repFifo, rep, sizeof(tlv_reply_t));
+
+    close(repFifo);
 }
 
-void *thr_fifo_answer(void *arg)
+void *thr_open_office(void *arg)
 {
     int tid = *(int *)arg;
     logBankOfficeOpen(logFd, tid, pthread_self());
 
 
     while(!srvShutdown) {
-        //pthread_mutex_lock(&queueMutex);
-        //logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+        // SEMAPHORE AND LOG
         if(!isEmptyQueue(&q)) {
             tlv_request_t req;
             tlv_reply_t rep;
             dequeue(&q, &req);
-            //pthread_mutex_unlock (&queueMutex);
-            //logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, req.value.header.pid);
+        // SEMAPHORE AND LOG
+            logRequest(fifoFd, tid, &req);
             
-            //fuc para tratar do pedido
-            logRequest(STDOUT_FILENO, tid, &req);
-            processRequest(&req, &rep);
-            sendReply(&req);
-            //srvShutdown = true;
+            pthread_mutex_lock(&accountsAccessMutex);
+            logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
+
+            //takes care of request, filling reply struct
+            processRequest( &req, &rep, tid);
+
+            pthread_mutex_unlock(&accountsAccessMutex);
+            logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
+
+            sendReply(&rep, req.value.header.pid, tid);
+            logReply(logFd, tid, &rep);
         }
-        //pthread_mutex_unlock(&queueMutex);
-        //logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
+        // SEMAPHORE AND LOG
     }
 
     logBankOfficeClose(logFd, tid, pthread_self());
@@ -165,26 +195,7 @@ int main(int argc, char **argv)
         exit(1);
 
 
-    // creates and opens FIFO to communication user->server
-    if(mkfifo(SERVER_FIFO_PATH, 0666) != 0)
-    {
-        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be created successfully\n", 55);
-        exit(1);
-    } 
-    else 
-        on_exit(removePath, SERVER_FIFO_PATH);
-
-    int fifoFd= open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
-    if (fifoFd == -1) {
-        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be opened\n",41);
-        exit(1);
-    }
-    else
-    {
-        on_exit(closeFd, &fifoFd);
-    }
-    
-    // creates and/or opens server log file 
+    // creates and/or opens server log file with rw-rw-rw- permissions
     logFd = open(SERVER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if(logFd == -1) {
         write(STDERR_FILENO, "Server Log File could not be opened\n", 37);
@@ -194,6 +205,36 @@ int main(int argc, char **argv)
         on_exit(closeFd, &logFd);
     }
 
+    //manages mutexes and creates admin acc
+    pthread_mutex_lock(&accountsAccessMutex);
+    logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, ADMIN_ACCOUNT_ID);
+    bank_account_t adminAcc;
+    createAdminAccount(argv[2], &adminAcc);
+    logAccountCreation(logFd, MAIN_THREAD_ID, &adminAcc);
+    pthread_mutex_unlock(&accountsAccessMutex);
+    logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, ADMIN_ACCOUNT_ID);
+
+    // creates and opens FIFO to communication user->server with rw-rw-rw- permissions
+    if(mkfifo(SERVER_FIFO_PATH, 0666) != 0)
+    {
+        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be created successfully\n", 55);
+        exit(1);
+    } 
+    else 
+        on_exit(removePath, SERVER_FIFO_PATH);
+
+    fifoFd= open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
+    if (fifoFd == -1) {
+        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be opened\n",41);
+        exit(1);
+    }
+    else
+    {
+        on_exit(closeFd, &fifoFd);
+    }
+    
+    
+
 
     // creation of threads
     pthread_t threads[threadNum];
@@ -201,11 +242,13 @@ int main(int argc, char **argv)
     for (int i = 0; i < threadNum; i++)
     {
         tid[i] = i;
-        pthread_create(&threads[i], NULL, thr_fifo_answer, &tid[i]);
+        pthread_create(&threads[i], NULL, thr_open_office, &tid[i]);
     }
 
     // initialization of queue
     queueInit(&q, sizeof(tlv_request_t));
+
+    // QUEUE SEMAPHORE INIT
 
     // waits for request on fifo and when reads, put in queue
     while (!srvShutdown)
@@ -215,18 +258,16 @@ int main(int argc, char **argv)
         if (read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
         {
             logRequest(logFd, MAIN_THREAD_ID, &req);
-            //pthread_mutex_lock(&queueMutex);
-            //logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
+        // SEMAPHORE AND LOG
            
 
             enqueue(&q, &req);
 
-            //pthread_mutex_unlock(&queueMutex);
-            //logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
+        // SEMAPHORE AND LOG
         }
     }
 
-    //pthread_mutex_destroy (queueMutex);
+        // SEMAPHORE DESTROY?
 
     for (int i = 0; i < threadNum; i++)
     {

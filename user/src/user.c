@@ -165,7 +165,7 @@ void removeFifo(int r, void *arg)
     unlink((char *)arg);
 }
 
-void requestErrorPackagePrep(enum ret_code errorCode, tlv_reply_t *reply, tlv_request_t *request)
+void replyErrorPackagePrep(enum ret_code errorCode, tlv_reply_t *reply, tlv_request_t *request)
 {
     reply->type = request->type;
     reply->value.header.account_id = request->value.header.account_id;
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
     // error opening
     if (reqFifo == -1)
     { //if could not open, closes
-        requestErrorPackagePrep(RC_SRV_DOWN, &reply, &request);
+        replyErrorPackagePrep(RC_SRV_DOWN, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
     //creates fifo
     if (mkfifo(fifostr, 0666) != 0)
     {
-        requestErrorPackagePrep(RC_OTHER, &reply, &request);
+        replyErrorPackagePrep(RC_OTHER, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -252,7 +252,7 @@ int main(int argc, char *argv[])
     if (repFifo == -1)
     { //if could not open, closes
 
-        requestErrorPackagePrep(RC_OTHER, &reply, &request);
+        replyErrorPackagePrep(RC_OTHER, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -270,7 +270,6 @@ int main(int argc, char *argv[])
     {
         write(STDERR_FILENO, "The request was not completely sent\n", 37);
     }
-    printf("%d\n", size);
 
     // to make sure that the log is done
     while (logRequest(logFd, getpid(), &request) == -1)
@@ -288,7 +287,7 @@ int main(int argc, char *argv[])
 
     if (!successRead)
     {
-        requestErrorPackagePrep(RC_SRV_TIMEOUT, &reply, &request);
+        replyErrorPackagePrep(RC_SRV_TIMEOUT, &reply, &request);
     }
 
     while (logReply(logFd, getpid(), &reply) == -1)

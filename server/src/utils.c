@@ -20,7 +20,7 @@ int argumentHandler(int argc, char **argv)
         write(STDERR_FILENO, "password length must be [8-20] characters\n", 43);
         return 1;
     }
-    createAdminAccount(argv[2]);
+    return 0;
 }
 
 void closeFd(int r, void* arg)
