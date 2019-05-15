@@ -21,8 +21,8 @@ int argumentHandler(int argc, char *argv[])
         return 1;
     }
 
-    /*
-    if (0 > atoi(argv[1]) | atoi(argv[1]) >= MAX_BANK_ACCOUNTS)
+    
+    if (0 > atoi(argv[1]) || atoi(argv[1]) >= MAX_BANK_ACCOUNTS)
     {
         write(STDERR_FILENO, "account ID must be a valid number [0-4096]\n", 44);
         return 1;
@@ -34,51 +34,55 @@ int argumentHandler(int argc, char *argv[])
         return 1;
     }
 
+    
+    int newAccountID;
+    int initialBalance;
+    char password[MAX_PASSWORD_LEN+1];
+
+    int amount;
+    int destinyAccountID;
+    //char accId[WIDTH_ID], password[MAX_PASSWORD_LEN+1], balance[WIDTH_BALANCE], amount[WIDTH_BALANCE];
+
     switch (atoi(argv[4]))
     {
     case 1:
-        if (argv[5] != "")
+        if (strcmp("", argv[5]) != 0)
         {
-            write(STDERR_FILENO, "  op 1 has no agmemnts \"\"\n", 27);
+            write(STDERR_FILENO, " op 1 should not have arguments: \"\"\n", 27);
             return 1;
         }
         break;
 
     case 3:
-        if (argv[5] != "")
+        if (strcmp("", argv[5]) != 0)
         {
-            write(STDERR_FILENO, "  op 3 has no agmemnts \"\"\n", 27);
+            write(STDERR_FILENO, "  op 3 should not have arguments: \"\"\n", 27);
             return 1;
         }
         break;
 
     case 2:
-        int amount;
-        int destiny_account_ID;
-        sscanf(argv[5], "\"%d %d\"", destiny_account_ID, amount);
-        if (0 > destiny_account_ID || destiny_account_ID >= MAX_BANK_ACCOUNTS)
+        sscanf(argv[5], "%d %d", destinyAccountID, amount);
+        if (0 > destinyAccountID || destinyAccountID >= MAX_BANK_ACCOUNTS)
         {
-            write(STDERR_FILENO, "destiny account ID must be a valid number [0-4096]\n", 52);
+            write(STDERR_FILENO, "destiny account ID must be a valid number [1-4096]\n", 52);
             return 1;
         }
         if (0 > amount || amount < MAX_BALANCE) {
-             write(STDERR_FILENO, "amount must be a valid number [0-1000000000]\n", 46);
+            write(STDERR_FILENO, "amount must be a valid number [1-1000000000]\n", 46);
             return 1;
         }
         break;
 
     case 0:
-        int new_account_ID;
-        int initial_balance;
-        char password[30];
-        sscanf(argv[5], "\"%d %d %s\"", destiny_account_ID, amount);
-        if (0 > new_account_ID || new_account_ID >= MAX_BANK_ACCOUNTS)
+        sscanf(argv[5], "%d %d %s", destinyAccountID, amount);
+        if (0 > newAccountID || newAccountID >= MAX_BANK_ACCOUNTS)
         {
-            write(STDERR_FILENO, "new account ID must be a valid number [0-4096]\n", 48);
+            write(STDERR_FILENO, "new account ID must be a valid number [1-4096]\n", 48);
             return 1;
         }
-        if (0 > initial_balance || initial_balance < MAX_BALANCE) {
-             write(STDERR_FILENO, "initial balance must be a valid number [0-1000000000]\n", 46);
+        if (0 > initialBalance || initialBalance < MAX_BALANCE) {
+             write(STDERR_FILENO, "initial balance must be a valid number [1-1000000000]\n", 46);
             return 1;
         }
         //test password
@@ -91,7 +95,7 @@ int argumentHandler(int argc, char *argv[])
         write(STDERR_FILENO, "    op 2 require as argument \"<destiny_account_ID> <amount>\"\n", 62);
         return 1;
     }
-    */
+    
    
     //opDelay = atoi(argv[3]);
 
