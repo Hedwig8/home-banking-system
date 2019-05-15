@@ -7,88 +7,154 @@
 
 #include "dataManip.h"
 #include "queue.h"
+#include "utils.h"
 
 // current number of threads
-int threadNum;
+int threadNum, logFd;
 Queue q;
 bool srvShutdown = false;
+pthread_mutex_t queueMutex = PTHREAD_MUTEX_INITIALIZER;
 
-int argumentHandler(int argc, char **argv)
-{
-    if (argc != 3)
-    {
-        write(STDERR_FILENO, "usage: server <no of bank offices> <admin password>\n", 53);
-        return 1;
+void processRequest (tlv_request_t *req, tlv_reply_t *rep) {
+
+    bool verification = true;
+    bank_account_t acc;
+
+    /**
+     *  MUTEX
+     *  LOCK
+     * 
+     */
+
+
+    // check if exists
+    if(findAccount(req->value.header.account_id, &acc)) {
+        rep->value.header.ret_code = RC_ID_NOT_FOUND;
+        verification = false;
     }
 
-    threadNum = atoi(argv[1]);
-    if (threadNum <= 0 || threadNum > MAX_BANK_OFFICES)
-    {
-        write(STDERR_FILENO, "range of bank offices must be between 1 and 99, inclusive\n", 59);
-        return 1;
+    // check if pair (id, password) is correct
+    if(checkLogin(req->value.header.password, acc)) {
+        rep->value.header.ret_code = RC_LOGIN_FAIL;
+        verification = false;
     }
 
-    if (strlen(argv[2]) < MIN_PASSWORD_LEN || strlen(argv[2]) > MAX_PASSWORD_LEN)
-    {
-        write(STDERR_FILENO, "password length must be between 8 and 20 characters\n", 53);
-        return 1;
-    }
-    createAdminAccount(argv[2]);
-}
+    rep->type = req->type;
+    rep->value.header.account_id = req->value.header.account_id;
 
-void *thr_fifo_answer(void *arg)
-{
-    int tid = *(int *)arg;
-
-    //Isto deveria ser global para depois ser destruida no main?
-    //A queue nessecita de mutex #420Questions
-    //pthread_cond_t queueMutex = PTHREAD_COND_INITIALIZER;
-
-    while(!srvShutdown) {
-        while(!isEmptyQueue(&q)) {
-            //pthread_mutex_lock (queueMutex);
-            tlv_request_t req;
-            dequeue(&q, &req);
-            //fuc para tratar do pedido
-            write(STDOUT_FILENO, "tlv received", 13);
-            logRequest(STDOUT_FILENO, tid, &req);
-            srvShutdown = true;
-            //pthread_mutex_unlock (queueMutex);
+    // if error occured, prepare reply and return function
+    if(!verification) {
+        switch(req->type) {
+            case OP_BALANCE:
+                rep->value.balance.balance = 0;
+                break;
+            case OP_TRANSFER:
+                rep->value.transfer.balance = 0;
+                break;
+            case OP_SHUTDOWN:
+                rep->value.shutdown.active_offices = 0;
+                break;
+            default:
+                break;
         }
+        rep->length = sizeof(rep->value);
+        /**
+         * 
+         * MUTEX
+         * UNLOCK
+         * 
+         */
+        return;
     }
 
-    //pthread_mutex_destroy (queueMutex);
-}
 
-void processRequest (tlv_request_t req) {
-    switch (req.type)
+    switch (req->type)
     {
     case OP_CREATE_ACCOUNT:
+        // must be admin
+        if(acc.account_id != 0) {
+            rep->value.header.ret_code = RC_OP_NALLOW;
+            break;
+        }
+
+        // acc must not exist
+        if(createAccount(req->value.create)) {
+            rep->value.header.ret_code = RC_ID_IN_USE;
+            break;
+        }
+
         break;
 
     case OP_BALANCE:
+        // cannot be admin
+        if(acc.account_id == 0) {
+            rep->value.header.ret_code = RC_OP_NALLOW;
+            break;
+        }
+
+
         break;
 
     case OP_TRANSFER:
+        // cannot be admin
+        if(acc.account_id == 0) {
+            rep->value.header.ret_code = RC_OP_NALLOW;
+            break;
+        }
         break;
 
     case OP_SHUTDOWN:
-        if (req.value.header.account_id == 0)
-            srvShutdown = true;
+        // must be admin
+        if(acc.account_id != 0) {
+            rep->value.header.ret_code = RC_OP_NALLOW;
+            break;
+        }
+
+        srvShutdown = true;
         break;
 
     default:
         break;
     }
+
+
 }
 
-void closeFd(int r, void* arg) {
-    close(*(int*)arg);
+void sendReply(tlv_reply_t *rep) {
+
 }
 
-void removePath(int r, void* arg) {
-    unlink((char *) arg);
+void *thr_fifo_answer(void *arg)
+{
+    int tid = *(int *)arg;
+    logBankOfficeOpen(logFd, tid, pthread_self());
+
+
+    while(!srvShutdown) {
+        //pthread_mutex_lock(&queueMutex);
+        //logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+        if(!isEmptyQueue(&q)) {
+            tlv_request_t req;
+            tlv_reply_t rep;
+            dequeue(&q, &req);
+            //pthread_mutex_unlock (&queueMutex);
+            //logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, req.value.header.pid);
+            
+            //fuc para tratar do pedido
+            logRequest(STDOUT_FILENO, tid, &req);
+            processRequest(&req, &rep);
+            sendReply(&req);
+            //srvShutdown = true;
+        }
+        //pthread_mutex_unlock(&queueMutex);
+        //logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
+    }
+
+    logBankOfficeClose(logFd, tid, pthread_self());
 }
+
+
+
 
 int main(int argc, char **argv)
 {
@@ -98,25 +164,44 @@ int main(int argc, char **argv)
     if (argumentHandler(argc, argv)) // handles the arguments and creates admin account
         exit(1);
 
-    // creates and opens FIFO to communication
-    
+
+    // creates and opens FIFO to communication user->server
     if(mkfifo(SERVER_FIFO_PATH, 0666) != 0)
     {
         write(STDERR_FILENO, "FIFO tmp/secure_srv could not be created successfully\n", 55);
         exit(1);
     } 
-    else on_exit(removePath, SERVER_FIFO_PATH);
+    else 
+        on_exit(removePath, SERVER_FIFO_PATH);
+
     int fifoFd= open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
-    if (fifoFd == -1)
+    if (fifoFd == -1) {
+        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be opened\n",41);
         exit(1);
+    }
+    else
+    {
+        on_exit(closeFd, &fifoFd);
+    }
+    
+    // creates and/or opens server log file 
+    logFd = open(SERVER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if(logFd == -1) {
+        write(STDERR_FILENO, "Server Log File could not be opened\n", 37);
+        exit(1);
+    }
+    else {
+        on_exit(closeFd, &logFd);
+    }
+
 
     // creation of threads
     pthread_t threads[threadNum];
+    int tid[threadNum];
     for (int i = 0; i < threadNum; i++)
     {
-        int tid = i;
-        pthread_create(&threads[i], NULL, thr_fifo_answer, &tid);
-        fprintf(stdout, "loop: %d\n", i);
+        tid[i] = i;
+        pthread_create(&threads[i], NULL, thr_fifo_answer, &tid[i]);
     }
 
     // initialization of queue
@@ -127,18 +212,26 @@ int main(int argc, char **argv)
     {
         // reads request
         tlv_request_t req;
-        if ( read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
+        if (read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
         {
+            logRequest(logFd, MAIN_THREAD_ID, &req);
+            //pthread_mutex_lock(&queueMutex);
+            //logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
+           
+
             enqueue(&q, &req);
+
+            //pthread_mutex_unlock(&queueMutex);
+            //logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
         }
     }
+
+    //pthread_mutex_destroy (queueMutex);
 
     for (int i = 0; i < threadNum; i++)
     {
         pthread_join(threads[i], NULL);
     }
-
-    unlink(SERVER_FIFO_PATH);
 
     return 0;
 }

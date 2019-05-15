@@ -41,7 +41,6 @@ int argumentHandler(int argc, char *argv[])
 
     int amount;
     int destinyAccountID;
-    //char accId[WIDTH_ID], password[MAX_PASSWORD_LEN+1], balance[WIDTH_BALANCE], amount[WIDTH_BALANCE];
 
     switch (atoi(argv[4]))
     {

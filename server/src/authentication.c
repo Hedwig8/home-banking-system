@@ -1,19 +1,6 @@
-#include "passwordSalt.h"
+#include "authentication.h"
 
 const char alphaNum[] = "0123456789abcdefghijklmnopqrstuwxyz";
-
-// int getSaltKey(char *oSalt) {
-//     int length = strlen(alphaNum);
-//     char salt[SALT_LEN+1];
-
-//     for(int i = 0; i < SALT_LEN; i++) {
-//         salt[i] = alphaNum[rand() % length];
-//     }
-
-//     strcpy(oSalt, salt);
-
-//     return 0;
-// }
 
 char* getSaltKey() {
     int length = strlen(alphaNum);
@@ -114,6 +101,17 @@ int calculateHash(char* iPassword, char* salt, char* oHash) {
 
     // make sure the hash has not too many chars
     strcpy(oHash, strtok(hash, " "));
+
+    return 0;
+}
+
+int checkLogin(char* password, bank_account_t acc) {
+
+    char hash[HASH_LEN];
+    calculateHash(password, acc.salt, hash);
+
+    if(strcmp(hash, acc.hash) != 0) 
+        return 1;
 
     return 0;
 }

@@ -1,14 +1,15 @@
 #ifndef DATAMANIP_H
 #define DATAMANIP_H
 
-#include "passwordSalt.h"
+#include "authentication.h"
+#include "utils.h"
 
 void createAdminAccount(char password[]);
 
-int createAccount(bank_account_t acc);
-
 int findAccount(int id, bank_account_t *acc);
 
-int consumeTransfer(bank_account_t* src, bank_account_t dest);
+int createAccount(req_create_account_t req);
+
+int consumeTransfer(req_header_t src, req_transfer_t dest, tlv_reply_t *rep);
 
 #endif
