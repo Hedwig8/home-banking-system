@@ -21,7 +21,6 @@ int argumentHandler(int argc, char *argv[])
         return 1;
     }
 
-    
     if (0 > atoi(argv[1]) || atoi(argv[1]) >= MAX_BANK_ACCOUNTS)
     {
         write(STDERR_FILENO, "account ID must be a valid number [0-4096]\n", 44);
@@ -34,57 +33,80 @@ int argumentHandler(int argc, char *argv[])
         return 1;
     }
 
-    
-    int newAccountID;
-    int initialBalance;
-    char password[MAX_PASSWORD_LEN+1];
+    if (0 > atoi(argv[3]) || atoi(argv[3]) > MAX_OP_DELAY_MS)
+    {
+        write(STDERR_FILENO, "delay must be a valid number [0-99999]\n", 44);
+        return 1;
+    }
 
-    int amount;
-    int destinyAccountID;
+    char password[MAX_PASSWORD_LEN + 1];
+    char *garbageStr = calloc(sizeof(char), MAX_PASSWORD_LEN + 1);
+    int balance;
+    int accountID;
 
     switch (atoi(argv[4]))
     {
     case 1:
-        if (strcmp("", argv[5]) != 0)
+        sscanf(argv[5], "%s", garbageStr);
+        if (strcmp("", garbageStr) != 0)
         {
-            write(STDERR_FILENO, " op 1 should not have arguments: \"\"\n", 27);
+            write(STDERR_FILENO, "op 1 should not have arguments: \"\" \n", 38);
             return 1;
         }
         break;
 
     case 3:
-        if (strcmp("", argv[5]) != 0)
+        sscanf(argv[5], "%s", garbageStr);
+        if (strcmp("", garbageStr) != 0)
         {
-            write(STDERR_FILENO, "  op 3 should not have arguments: \"\"\n", 27);
+            write(STDERR_FILENO, "op 3 should not have arguments: \"\" \n", 38);
             return 1;
         }
         break;
 
     case 2:
-        sscanf(argv[5], "%d %d", destinyAccountID, amount);
-        if (0 > destinyAccountID || destinyAccountID >= MAX_BANK_ACCOUNTS)
+        sscanf(argv[5], "%d %d%s", &accountID, &balance, garbageStr);
+        if (0 >= accountID || accountID >= MAX_BANK_ACCOUNTS)
         {
-            write(STDERR_FILENO, "destiny account ID must be a valid number [1-4096]\n", 52);
+            write(STDERR_FILENO, "destiny account ID must be a valid number [1-4095]\n", 52);
             return 1;
         }
-        if (0 > amount || amount < MAX_BALANCE) {
+        if (0 > balance || balance > MAX_BALANCE)
+        {
             write(STDERR_FILENO, "amount must be a valid number [1-1000000000]\n", 46);
+            return 1;
+        }
+        if (strcmp(garbageStr, "") != 0)
+        {
+            write(STDERR_FILENO, "op 2 should not have more than 2 arguments\n", 44);
             return 1;
         }
         break;
 
     case 0:
-        sscanf(argv[5], "%d %d %s", destinyAccountID, amount);
-        if (0 > newAccountID || newAccountID >= MAX_BANK_ACCOUNTS)
+        sscanf(argv[5], "%d %d %s %s", &accountID, &balance, password, garbageStr);
+        if (0 >= accountID || accountID >= MAX_BANK_ACCOUNTS)
         {
             write(STDERR_FILENO, "new account ID must be a valid number [1-4096]\n", 48);
             return 1;
         }
-        if (0 > initialBalance || initialBalance < MAX_BALANCE) {
-             write(STDERR_FILENO, "initial balance must be a valid number [1-1000000000]\n", 46);
+        if (0 > balance || balance > MAX_BALANCE)
+        {
+            write(STDERR_FILENO, "initial balance must be a valid number [1-1000000000]\n", 55);
             return 1;
         }
         //test password
+        if (strlen(password) < MIN_PASSWORD_LEN | strlen(password) > MAX_PASSWORD_LEN)
+        {
+            write(STDERR_FILENO, "password must have a valid length [8-20]\n", 42);
+            return 1;
+        }
+
+        if (strcmp(garbageStr, "") != 0)
+        {
+            write(STDERR_FILENO, "op 0 should not have more than 3 arguments\n", 44);
+            return 1;
+        }
         break;
 
     default:
@@ -94,9 +116,6 @@ int argumentHandler(int argc, char *argv[])
         write(STDERR_FILENO, "    op 2 require as argument \"<destiny_account_ID> <amount>\"\n", 62);
         return 1;
     }
-    
-   
-    //opDelay = atoi(argv[3]);
 
     return 0;
 }
@@ -177,15 +196,15 @@ int main(int argc, char *argv[])
     int timer = FIFO_TIMEOUT_SECS;
     bool successRead = false;
 
-    // complete request with args
-    requestPackagePrep(argv, &request);
-
     // check arguments validity
     if (argumentHandler(argc, argv))
         return 1;
 
+    // complete request with args
+    requestPackagePrep(argv, &request);
+
     // opens ulog.txt
-    int logFd = open(USER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    int logFd = open(USER_LOGFILE, O_WRONLY | O_CREAT | O_APPEND, 0666);
     // error opening
     if (logFd == -1)
     {
@@ -200,32 +219,7 @@ int main(int argc, char *argv[])
     // error opening
     if (reqFifo == -1)
     { //if could not open, closes
-
-        //FUCTION NOT TEST
-        //requestErrorPackagePrep (RC_SRV_DOWN, reply, request);
-
-        // ---
-        reply.type = request.type;
-        reply.value.header.account_id = request.value.header.account_id;
-        reply.value.header.ret_code = RC_SRV_DOWN;
-
-        switch (reply.type)
-        {
-        case OP_BALANCE:
-            reply.value.balance.balance = 0;
-            break;
-        case OP_TRANSFER:
-            reply.value.transfer.balance = 0;
-            break;
-        case OP_SHUTDOWN:
-            reply.value.shutdown.active_offices = 0;
-            break;
-        default:
-            break;
-        }
-
-        reply.length = sizeof(reply.value);
-        // ---
+        requestErrorPackagePrep(RC_SRV_DOWN, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -242,32 +236,7 @@ int main(int argc, char *argv[])
     //creates fifo
     if (mkfifo(fifostr, 0666) != 0)
     {
-
-        //FUCTION NOT TEST
-        //requestErrorPackagePrep (RC_OTHER, reply, request);
-
-        // ---
-        reply.type = request.type;
-        reply.value.header.account_id = request.value.header.account_id;
-        reply.value.header.ret_code = RC_OTHER;
-
-        switch (reply.type)
-        {
-        case OP_BALANCE:
-            reply.value.balance.balance = 0;
-            break;
-        case OP_TRANSFER:
-            reply.value.transfer.balance = 0;
-            break;
-        case OP_SHUTDOWN:
-            reply.value.shutdown.active_offices = 0;
-            break;
-        default:
-            break;
-        }
-
-        reply.length = sizeof(reply.value);
-        // ---
+        requestErrorPackagePrep(RC_OTHER, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -283,31 +252,7 @@ int main(int argc, char *argv[])
     if (repFifo == -1)
     { //if could not open, closes
 
-        //FUCTION NOT TEST
-        //requestErrorPackagePrep (RC_OTHER, reply, request);
-
-        // ---
-        reply.type = request.type;
-        reply.value.header.account_id = request.value.header.account_id;
-        reply.value.header.ret_code = RC_OTHER;
-
-        switch (reply.type)
-        {
-        case OP_BALANCE:
-            reply.value.balance.balance = 0;
-            break;
-        case OP_TRANSFER:
-            reply.value.transfer.balance = 0;
-            break;
-        case OP_SHUTDOWN:
-            reply.value.shutdown.active_offices = 0;
-            break;
-        default:
-            break;
-        }
-
-        reply.length = sizeof(reply.value);
-        // ---
+        requestErrorPackagePrep(RC_OTHER, &reply, &request);
 
         logReply(logFd, getpid(), &reply);
 
@@ -343,31 +288,7 @@ int main(int argc, char *argv[])
 
     if (!successRead)
     {
-
-        //FUCTION NOT TEST
-        //requestErrorPackagePrep (RC_SRV_TIMEOUT, reply, request);
-
-        //--
-        reply.type = request.type;
-        reply.value.header.account_id = request.value.header.account_id;
-        reply.value.header.ret_code = RC_SRV_TIMEOUT;
-
-        switch (reply.type)
-        {
-        case OP_BALANCE:
-            reply.value.balance.balance = 0;
-            break;
-        case OP_TRANSFER:
-            reply.value.transfer.balance = 0;
-            break;
-        case OP_SHUTDOWN:
-            reply.value.shutdown.active_offices = 0;
-            break;
-        default:
-            break;
-        }
-        reply.length = sizeof(reply.value);
-        //--
+        requestErrorPackagePrep(RC_SRV_TIMEOUT, &reply, &request);
     }
 
     while (logReply(logFd, getpid(), &reply) == -1)
