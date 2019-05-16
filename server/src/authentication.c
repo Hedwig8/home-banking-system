@@ -1,6 +1,6 @@
 #include "authentication.h"
 
-const char alphaNum[] = "0123456789abcdefghijklmnopqrstuwxyz";
+const char alphaNum[] = "0123456789abcdef";
 
 char* getSaltKey() {
     int length = strlen(alphaNum);

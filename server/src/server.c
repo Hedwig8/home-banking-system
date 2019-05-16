@@ -11,27 +11,29 @@
 #include "utils.h"
 
 // current number of threads
-int threadNum, logFd, fifoFd;
+int threadNum, logFd, fifoFd, emptyQueue;
 Queue q;
 bool srvShutdown = false;
 pthread_mutex_t accountsAccessMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t queueAccessMutex = PTHREAD_MUTEX_INITIALIZER; // CHANGE TO SEMAPHORE???
 sem_t full, empty;
 
-void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
+void processRequest(tlv_request_t *req, tlv_reply_t *rep, int tid)
+{
 
     bool verification = true;
     bank_account_t acc;
 
-
     // check if exists
-    if(findAccount(req->value.header.account_id, &acc)) {
+    if (findAccount(req->value.header.account_id, &acc))
+    {
         rep->value.header.ret_code = RC_ID_NOT_FOUND;
         verification = false;
     }
 
     // check if pair (id, password) is correct
-    if(checkLogin(req->value.header.password, acc)) {
+    if (checkLogin(req->value.header.password, acc))
+    {
         rep->value.header.ret_code = RC_LOGIN_FAIL;
         verification = false;
     }
@@ -40,37 +42,39 @@ void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
     rep->value.header.account_id = req->value.header.account_id;
 
     // if error occured, prepare reply and return function
-    if(!verification) {
-        switch(req->type) {
-            case OP_BALANCE:
-                rep->value.balance.balance = 0;
-                break;
-            case OP_TRANSFER:
-                rep->value.transfer.balance = 0;
-                break;
-            case OP_SHUTDOWN:
-                rep->value.shutdown.active_offices = 0;
-                break;
-            default:
-                break;
+    if (!verification)
+    {
+        switch (req->type)
+        {
+        case OP_BALANCE:
+            rep->value.balance.balance = 0;
+            break;
+        case OP_TRANSFER:
+            rep->value.transfer.balance = 0;
+            break;
+        case OP_SHUTDOWN:
+            rep->value.shutdown.active_offices = 0;
+            break;
+        default:
+            break;
         }
         rep->length = sizeof(rep->value);
         return;
     }
 
-
     switch (req->type)
     {
     case OP_CREATE_ACCOUNT:
         // must be admin
-        if(acc.account_id != 0) {
+        if (acc.account_id != 0)
+        {
             rep->value.header.ret_code = RC_OP_NALLOW;
             break;
         }
 
         // delay
         logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
-        usleep(req->value.header.op_delay_ms*1000);
+        usleep(req->value.header.op_delay_ms * 1000);
         // creates acc and fills rep's ret code
         createAccount(req->value.create, rep);
 
@@ -78,14 +82,15 @@ void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
 
     case OP_BALANCE:
         // cannot be admin
-        if(acc.account_id == 0) {
+        if (acc.account_id == 0)
+        {
             rep->value.header.ret_code = RC_OP_NALLOW;
             break;
         }
 
         // delay
         logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
-        usleep(req->value.header.op_delay_ms*1000);
+        usleep(req->value.header.op_delay_ms * 1000);
 
         getBalance(req->value.header, rep);
 
@@ -93,14 +98,15 @@ void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
 
     case OP_TRANSFER:
         // cannot be admin
-        if(acc.account_id == 0) {
+        if (acc.account_id == 0)
+        {
             rep->value.header.ret_code = RC_OP_NALLOW;
             break;
         }
 
         // delay
         logSyncDelay(logFd, tid, req->value.header.pid, req->value.header.op_delay_ms);
-        usleep(req->value.header.op_delay_ms*1000);
+        usleep(req->value.header.op_delay_ms * 1000);
 
         consumeTransfer(req->value.header, req->value.transfer, rep);
 
@@ -108,14 +114,15 @@ void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
 
     case OP_SHUTDOWN:
         // must be admin
-        if(acc.account_id != 0) {
+        if (acc.account_id != 0)
+        {
             rep->value.header.ret_code = RC_OP_NALLOW;
             break;
         }
 
         // delay
         logDelay(logFd, tid, req->value.header.op_delay_ms);
-        usleep(req->value.header.op_delay_ms*1000);
+        usleep(req->value.header.op_delay_ms * 1000);
 
         // changes fifo permissions to r--r--r--
         fchmod(fifoFd, 0444);
@@ -138,12 +145,14 @@ void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
     rep->length = sizeof(rep->value);
 }
 
-void sendReply(tlv_reply_t *rep, int pid, int tid) {
+void sendReply(tlv_reply_t *rep, int pid, int tid)
+{
     char fifostr[USER_FIFO_PATH_LEN];
     sprintf(fifostr, "%s%05d", USER_FIFO_PATH_PREFIX, pid);
 
     int repFifo;
-    if((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK) == -1)) {
+    if ((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK) == -1))
+    {
         rep->value.header.ret_code = RC_USR_DOWN;
         return;
     }
@@ -159,60 +168,61 @@ void *thr_open_office(void *arg)
     int semValue;
     logBankOfficeOpen(logFd, tid, pthread_self());
 
+    while (!srvShutdown)
+    {
 
-    while(!srvShutdown) {
+        // waits full semaphore
+        sem_getvalue(&full, &semValue);
+        logSyncMechSem(logFd, tid, SYNC_OP_SEM_WAIT, SYNC_ROLE_CONSUMER, 0, semValue);
+        sem_wait(&full);
 
-        // mutex lock CHANGE TO SEMAPHORE???
+        // mutex lock
         pthread_mutex_lock(&queueAccessMutex);
         logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
 
-        if(!isEmptyQueue(&q)) {
-            tlv_request_t req;
-            tlv_reply_t rep;
+        tlv_request_t req;
+        tlv_reply_t rep;
+
+        if (!isEmptyQueue(&q))
+        {
+            
             dequeue(&q, &req);
 
-            // mutex unlock CHANGE TO SEMAPHORE???
+            // mutex unlock
             pthread_mutex_unlock(&queueAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, req.value.header.pid);
 
             logRequest(fifoFd, tid, &req);
 
-            // wiats full semaphore
-            sem_getvalue(&full, &semValue);
-            logSyncMechSem(logFd, tid, SYNC_OP_SEM_WAIT, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
-            sem_wait(&full);
-            
             // locks accounts access
             pthread_mutex_lock(&accountsAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
 
             //takes care of request, filling reply struct
-            processRequest( &req, &rep, tid);
+            processRequest(&req, &rep, tid);
 
             // unlocks accounts access
             pthread_mutex_unlock(&accountsAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
 
-            // posts empty semaphore
-            sem_post(&empty);
-            sem_getvalue(&empty, &semValue);
-            logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
-            
             // sends reply to user
             sendReply(&rep, req.value.header.pid, tid);
             logReply(logFd, tid, &rep);
-        } else {
+        }
+        else
+        {
             // mutex unlock CHANGE TO SEMAPHORE???
             pthread_mutex_unlock(&queueAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
-
-            usleep(100000);
         }
+        // posts empty semaphore
+        sem_post(&empty);
+        sem_getvalue(&empty, &semValue);
+        logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
     }
 
     logBankOfficeClose(logFd, tid, pthread_self());
 }
-
 
 int main(int argc, char **argv)
 {
@@ -226,35 +236,45 @@ int main(int argc, char **argv)
 
     // creates and/or opens server log file with rw-rw-rw- permissions
     logFd = open(SERVER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if(logFd == -1) {
+    if (logFd == -1)
+    {
         write(STDERR_FILENO, "Server Log File could not be opened\n", 37);
         exit(1);
     }
-    else {
+    else
+    {
         on_exit(closeFd, &logFd);
     }
 
-    //manages mutexes and creates admin acc
+    // locks acc mutex
     pthread_mutex_lock(&accountsAccessMutex);
     logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, ADMIN_ACCOUNT_ID);
+
+    //makes admin acc
     bank_account_t adminAcc;
     createAdminAccount(argv[2], &adminAcc);
     logAccountCreation(logFd, MAIN_THREAD_ID, &adminAcc);
+
+    //logs delay
+    logSyncDelay(logFd, MAIN_THREAD_ID, ADMIN_ACCOUNT_ID, 0);
+
+    //unlocks acc mutex
     pthread_mutex_unlock(&accountsAccessMutex);
     logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, ADMIN_ACCOUNT_ID);
 
     // creates and opens FIFO to communication user->server with rw-rw-rw- permissions
-    if(mkfifo(SERVER_FIFO_PATH, 0666) != 0)
+    if (mkfifo(SERVER_FIFO_PATH, 0666) != 0)
     {
         write(STDERR_FILENO, "FIFO tmp/secure_srv could not be created successfully\n", 55);
         exit(1);
-    } 
-    else 
+    }
+    else
         on_exit(removePath, SERVER_FIFO_PATH);
 
-    fifoFd= open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
-    if (fifoFd == -1) {
-        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be opened\n",41);
+    fifoFd = open(SERVER_FIFO_PATH, O_RDONLY | O_NONBLOCK);
+    if (fifoFd == -1)
+    {
+        write(STDERR_FILENO, "FIFO tmp/secure_srv could not be opened\n", 41);
         exit(1);
     }
     else
@@ -270,18 +290,18 @@ int main(int argc, char **argv)
     logSyncMechSem(logFd, MAIN_THREAD_ID, SYNC_OP_SEM_INIT, SYNC_ROLE_PRODUCER, 0, threadNum);
     sem_init(&empty, NOT_SHARED, threadNum);
 
-
     // creation of threads
     pthread_t threads[threadNum];
     int tid[threadNum];
     for (int i = 0; i < threadNum; i++)
     {
-        tid[i] = i+1;
+        tid[i] = i + 1;
         pthread_create(&threads[i], NULL, thr_open_office, &tid[i]);
     }
 
     // initialization of queue
     queueInit(&q, sizeof(tlv_request_t));
+    emptyQueue = 0; // stores the number of elements of the queue
     int semValue;
 
     // waits for request on fifo and when reads, put in queue
@@ -304,6 +324,7 @@ int main(int argc, char **argv)
 
             // puts received req in queue
             enqueue(&q, &req);
+            emptyQueue++;
 
             // unlocks exclusive access mutex
             pthread_mutex_unlock(&queueAccessMutex);
@@ -316,16 +337,16 @@ int main(int argc, char **argv)
         }
     }
 
-
+    pthread_mutex_destroy(&accountsAccessMutex);
+    pthread_mutex_destroy(&queueAccessMutex);
+    sem_destroy(&full);
+    sem_destroy(&empty);
+    
     for (int i = 0; i < threadNum; i++)
     {
         pthread_join(threads[i], NULL);
     }
 
-    pthread_mutex_destroy(&accountsAccessMutex);
-    pthread_mutex_destroy(&queueAccessMutex);
-    sem_destroy(&full);
-    sem_destroy(&empty);
 
     return 0;
 }
