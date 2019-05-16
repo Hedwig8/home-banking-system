@@ -134,7 +134,7 @@ void processRequest(tlv_request_t *req, tlv_reply_t *rep, int tid)
          * TO BE ADDED LATER
          * 
          */
-
+        rep->value.header.ret_code = RC_OK;
         srvShutdown = true;
         break;
 
@@ -150,8 +150,6 @@ void sendReply(tlv_reply_t *rep, int pid, int tid)
     char fifostr[USER_FIFO_PATH_LEN];
     sprintf(fifostr, "%s%05d", USER_FIFO_PATH_PREFIX, pid);
 
-    printf("%s\n", fifostr);
-
     int repFifo;
     if ((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK)) == -1)
     {
@@ -159,9 +157,7 @@ void sendReply(tlv_reply_t *rep, int pid, int tid)
         return;
     }
 
-    printf("after open fifo\n");
     int size = write(repFifo, rep, sizeof(tlv_reply_t));
-    printf("%d\n", size);
 
     close(repFifo);
 }
@@ -341,16 +337,19 @@ int main(int argc, char **argv)
         }
     }
 
-    pthread_mutex_destroy(&accountsAccessMutex);
-    pthread_mutex_destroy(&queueAccessMutex);
-    sem_destroy(&full);
-    sem_destroy(&empty);
+    for(int i = 1; i<threadNum; i++) {
+        sem_post(&full);
+    }
 
     for (int i = 0; i < threadNum; i++)
     {
         pthread_join(threads[i], NULL);
     }
 
+    pthread_mutex_destroy(&accountsAccessMutex);
+    pthread_mutex_destroy(&queueAccessMutex);
+    sem_destroy(&full);
+    sem_destroy(&empty);
 
     return 0;
 }

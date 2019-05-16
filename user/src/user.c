@@ -130,22 +130,22 @@ int requestPackagePrep(char *argv[], tlv_request_t *req)
     req->value.header.pid = getpid();
 
     char id[WIDTH_ID], password[MAX_PASSWORD_LEN], balance[WIDTH_BALANCE], amount[WIDTH_BALANCE];
+
     switch (req->type)
     {
     case OP_CREATE_ACCOUNT:
-        strtok(argv[5], id);
-        strtok(NULL, balance);
-        strtok(NULL, password);
+        strcpy(id, strtok(argv[5], " "));
+        strcpy(balance ,strtok(NULL, " "));
+        strcpy(password, strtok(NULL, " "));
         req->value.create.account_id = atoi(id);
-        printf("%s\n\n", id);
         strcpy(req->value.create.password, password);
         req->value.create.balance = atoi(balance);
         break;
     case OP_BALANCE:
         break;
     case OP_TRANSFER:
-        strtok(argv[5], id);
-        strtok(NULL, amount);
+        strcpy(id, strtok(argv[5], " "));
+        strcpy(amount, strtok(NULL, " "));
         req->value.transfer.account_id = atoi(id);
         req->value.transfer.amount = atoi(amount);
         break;

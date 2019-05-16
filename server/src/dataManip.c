@@ -19,7 +19,7 @@ void createAdminAccount(char password[], bank_account_t *adminAcc) {
 int findAccount(int id, bank_account_t *acc) {
     *acc = accounts[id];
 
-    if(acc == 0) return 1;
+    if(id != 0 && acc->account_id == 0) return 1;
 
     return 0;
 }
@@ -27,6 +27,8 @@ int findAccount(int id, bank_account_t *acc) {
 int createAccount(req_create_account_t req, tlv_reply_t *rep) {
     bank_account_t acc;
     
+    printf(" %d\n", req.account_id);
+
     // id must not exist
     if(findAccount(req.account_id, &acc) == 0) {
         rep->value.header.ret_code = RC_ID_IN_USE;
@@ -102,5 +104,6 @@ int consumeTransfer(req_header_t src, req_transfer_t dest, tlv_reply_t *rep) {
     accounts[destAcc.account_id] = destAcc;
 
     rep->value.header.ret_code = RC_OK;
+    rep->value.transfer.balance = srcAcc.balance;
     return 0;
 }
