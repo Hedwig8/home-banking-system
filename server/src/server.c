@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 #include "dataManip.h"
 #include "queue.h"
@@ -14,6 +15,8 @@ int threadNum, logFd, fifoFd;
 Queue q;
 bool srvShutdown = false;
 pthread_mutex_t accountsAccessMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queueAccessMutex = PTHREAD_MUTEX_INITIALIZER;
+sem_t full, empty;
 
 void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
 
@@ -157,11 +160,15 @@ void *thr_open_office(void *arg)
 
 
     while(!srvShutdown) {
-        // SEMAPHORE AND LOG
+
+        //mutex lock
         if(!isEmptyQueue(&q)) {
             tlv_request_t req;
             tlv_reply_t rep;
             dequeue(&q, &req);
+
+            // mutex unlock
+
         // SEMAPHORE AND LOG
             logRequest(fifoFd, tid, &req);
             
@@ -174,16 +181,16 @@ void *thr_open_office(void *arg)
             pthread_mutex_unlock(&accountsAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
 
+        // SEMAPHORE AND LOG
             sendReply(&rep, req.value.header.pid, tid);
             logReply(logFd, tid, &rep);
+        } else {
+            //mutex unlock
         }
-        // SEMAPHORE AND LOG
     }
 
     logBankOfficeClose(logFd, tid, pthread_self());
 }
-
-
 
 
 int main(int argc, char **argv)
@@ -232,8 +239,14 @@ int main(int argc, char **argv)
     {
         on_exit(closeFd, &fifoFd);
     }
-    
-    
+
+    // init of Full semaphore
+    logSyncMechSem(logFd, MAIN_THREAD_ID, SYNC_OP_SEM_INIT, SYNC_ROLE_PRODUCER, 0, 0);
+    sem_init(&full, NOT_SHARED, 0);
+
+    // init of Full semaphore
+    logSyncMechSem(logFd, MAIN_THREAD_ID, SYNC_OP_SEM_INIT, SYNC_ROLE_PRODUCER, 0, threadNum);
+    sem_init(&empty, NOT_SHARED, threadNum);
 
 
     // creation of threads
@@ -247,8 +260,7 @@ int main(int argc, char **argv)
 
     // initialization of queue
     queueInit(&q, sizeof(tlv_request_t));
-
-    // QUEUE SEMAPHORE INIT
+    int semValue;
 
     // waits for request on fifo and when reads, put in queue
     while (!srvShutdown)
@@ -258,21 +270,40 @@ int main(int argc, char **argv)
         if (read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
         {
             logRequest(logFd, MAIN_THREAD_ID, &req);
-        // SEMAPHORE AND LOG
-           
 
+            // waits empty semaphore
+            sem_getvalue(&empty, &semValue);
+            logSyncMechSem(logFd, MAIN_THREAD_ID, SYNC_OP_SEM_WAIT, SYNC_ROLE_PRODUCER, req.value.header.pid, semValue);
+            sem_wait(&empty);
+
+            // locks exclusive access mutex
+            pthread_mutex_lock(&queueAccessMutex);
+            logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
+
+            // puts received req in queue
             enqueue(&q, &req);
 
-        // SEMAPHORE AND LOG
+            // unlocks exclusive access mutex
+            pthread_mutex_unlock(&queueAccessMutex);
+            logSyncMech(logFd, MAIN_THREAD_ID, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_PRODUCER, req.value.header.pid);
+
+            // posts full semaphore
+            sem_post(&full);
+            sem_getvalue(&full, &semValue);
+            logSyncMechSem(logFd, MAIN_THREAD_ID, SYNC_OP_SEM_POST, SYNC_ROLE_PRODUCER, req.value.header.pid, semValue);
         }
     }
 
-        // SEMAPHORE DESTROY?
 
     for (int i = 0; i < threadNum; i++)
     {
         pthread_join(threads[i], NULL);
     }
+
+    pthread_mutex_destroy(&accountsAccessMutex);
+    pthread_mutex_destroy(&queueAccessMutex);
+    sem_destroy(&full);
+    sem_destroy(&empty);
 
     return 0;
 }
