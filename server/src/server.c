@@ -205,6 +205,8 @@ void *thr_open_office(void *arg)
             // mutex unlock CHANGE TO SEMAPHORE???
             pthread_mutex_unlock(&queueAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
+
+            usleep(100000);
         }
     }
 
