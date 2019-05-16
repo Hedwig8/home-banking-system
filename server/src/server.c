@@ -15,7 +15,7 @@ int threadNum, logFd, fifoFd;
 Queue q;
 bool srvShutdown = false;
 pthread_mutex_t accountsAccessMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t queueAccessMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queueAccessMutex = PTHREAD_MUTEX_INITIALIZER; // CHANGE TO SEMAPHORE???
 sem_t full, empty;
 
 void processRequest ( tlv_request_t *req, tlv_reply_t *rep, int tid) {
@@ -156,36 +156,55 @@ void sendReply(tlv_reply_t *rep, int pid, int tid) {
 void *thr_open_office(void *arg)
 {
     int tid = *(int *)arg;
+    int semValue;
     logBankOfficeOpen(logFd, tid, pthread_self());
 
 
     while(!srvShutdown) {
 
-        //mutex lock
+        // mutex lock CHANGE TO SEMAPHORE???
+        pthread_mutex_lock(&queueAccessMutex);
+        logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
+
         if(!isEmptyQueue(&q)) {
             tlv_request_t req;
             tlv_reply_t rep;
             dequeue(&q, &req);
 
-            // mutex unlock
+            // mutex unlock CHANGE TO SEMAPHORE???
+            pthread_mutex_unlock(&queueAccessMutex);
+            logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, req.value.header.pid);
 
-        // SEMAPHORE AND LOG
             logRequest(fifoFd, tid, &req);
+
+            // wiats full semaphore
+            sem_getvalue(&full, &semValue);
+            logSyncMechSem(logFd, tid, SYNC_OP_SEM_WAIT, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
+            sem_wait(&full);
             
+            // locks accounts access
             pthread_mutex_lock(&accountsAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
 
             //takes care of request, filling reply struct
             processRequest( &req, &rep, tid);
 
+            // unlocks accounts access
             pthread_mutex_unlock(&accountsAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_ACCOUNT, req.value.header.pid);
 
-        // SEMAPHORE AND LOG
+            // posts empty semaphore
+            sem_post(&empty);
+            sem_getvalue(&empty, &semValue);
+            logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
+            
+            // sends reply to user
             sendReply(&rep, req.value.header.pid, tid);
             logReply(logFd, tid, &rep);
         } else {
-            //mutex unlock
+            // mutex unlock CHANGE TO SEMAPHORE???
+            pthread_mutex_unlock(&queueAccessMutex);
+            logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
         }
     }
 
@@ -201,6 +220,7 @@ int main(int argc, char **argv)
     if (argumentHandler(argc, argv)) // handles the arguments and creates admin account
         exit(1);
 
+    threadNum = atoi(argv[1]);
 
     // creates and/or opens server log file with rw-rw-rw- permissions
     logFd = open(SERVER_LOGFILE, O_WRONLY | O_CREAT | O_TRUNC, 0666);
@@ -254,7 +274,7 @@ int main(int argc, char **argv)
     int tid[threadNum];
     for (int i = 0; i < threadNum; i++)
     {
-        tid[i] = i;
+        tid[i] = i+1;
         pthread_create(&threads[i], NULL, thr_open_office, &tid[i]);
     }
 
