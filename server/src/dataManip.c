@@ -26,8 +26,6 @@ int findAccount(int id, bank_account_t *acc) {
 
 int createAccount(req_create_account_t req, tlv_reply_t *rep) {
     bank_account_t acc;
-    
-    printf(" %d\n", req.account_id);
 
     // id must not exist
     if(findAccount(req.account_id, &acc) == 0) {
