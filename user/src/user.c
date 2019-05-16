@@ -137,6 +137,7 @@ int requestPackagePrep(char *argv[], tlv_request_t *req)
         strtok(NULL, balance);
         strtok(NULL, password);
         req->value.create.account_id = atoi(id);
+        printf("%s\n\n", id);
         strcpy(req->value.create.password, password);
         req->value.create.balance = atoi(balance);
         break;
@@ -281,7 +282,7 @@ int main(int argc, char *argv[])
     {
         sleep(1);
         timer--;
-        if (read(repFifo, &reply, sizeof(reply)) > 0)
+        if (read(repFifo, &reply, sizeof(tlv_reply_t)) > 0)
             successRead = true;
     }
 

@@ -150,14 +150,18 @@ void sendReply(tlv_reply_t *rep, int pid, int tid)
     char fifostr[USER_FIFO_PATH_LEN];
     sprintf(fifostr, "%s%05d", USER_FIFO_PATH_PREFIX, pid);
 
+    printf("%s\n", fifostr);
+
     int repFifo;
-    if ((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK) == -1))
+    if ((repFifo = open(fifostr, O_WRONLY | O_NONBLOCK)) == -1)
     {
         rep->value.header.ret_code = RC_USR_DOWN;
         return;
     }
 
-    write(repFifo, rep, sizeof(tlv_reply_t));
+    printf("after open fifo\n");
+    int size = write(repFifo, rep, sizeof(tlv_reply_t));
+    printf("%d\n", size);
 
     close(repFifo);
 }
@@ -192,7 +196,7 @@ void *thr_open_office(void *arg)
             pthread_mutex_unlock(&queueAccessMutex);
             logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, req.value.header.pid);
 
-            logRequest(fifoFd, tid, &req);
+            logRequest(logFd, tid, &req);
 
             // locks accounts access
             pthread_mutex_lock(&accountsAccessMutex);
@@ -341,7 +345,7 @@ int main(int argc, char **argv)
     pthread_mutex_destroy(&queueAccessMutex);
     sem_destroy(&full);
     sem_destroy(&empty);
-    
+
     for (int i = 0; i < threadNum; i++)
     {
         pthread_join(threads[i], NULL);
