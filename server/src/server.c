@@ -127,13 +127,12 @@ void processRequest(tlv_request_t *req, tlv_reply_t *rep, int tid)
         // changes fifo permissions to r--r--r--
         fchmod(fifoFd, 0444);
 
-        /**
-         * 
-         * LACKS ACTIVE OFFICES COUNTER 
-         * OR SOMETHING
-         * TO BE ADDED LATER
-         * 
-         */
+        // get active offices by calculating semaphores values
+        int emptyValue, fullValue;
+        sem_getvalue(&empty, &emptyValue);
+        sem_getvalue(&full, &fullValue);
+        rep->value.shutdown.active_offices = threadNum - emptyValue - fullValue;
+        
         rep->value.header.ret_code = RC_OK;
         srvShutdown = true;
         break;
@@ -183,9 +182,10 @@ void *thr_open_office(void *arg)
         tlv_request_t req;
         tlv_reply_t rep;
 
-        if (!isEmptyQueue(&q))
+        // so that in shutdown, the requests in queue are processed
+        while (!isEmptyQueue(&q))
         {
-            
+
             dequeue(&q, &req);
 
             // mutex unlock
@@ -208,17 +208,31 @@ void *thr_open_office(void *arg)
             // sends reply to user
             sendReply(&rep, req.value.header.pid, tid);
             logReply(logFd, tid, &rep);
+
+            // posts empty semaphore
+            sem_post(&empty);
+            sem_getvalue(&empty, &semValue);
+            logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
+
+            // preparing next iteration of processing, garanteeing that the queue gets emptied
+            // waits full semaphore
+            sem_getvalue(&full, &semValue);
+            logSyncMechSem(logFd, tid, SYNC_OP_SEM_WAIT, SYNC_ROLE_CONSUMER, 0, semValue);
+            sem_wait(&full);
+
+            // mutex lock
+            pthread_mutex_lock(&queueAccessMutex);
+            logSyncMech(logFd, tid, SYNC_OP_MUTEX_LOCK, SYNC_ROLE_CONSUMER, 0);
         }
-        else
-        {
-            // mutex unlock CHANGE TO SEMAPHORE???
-            pthread_mutex_unlock(&queueAccessMutex);
-            logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
-        }
+
+        // mutex unlock CHANGE TO SEMAPHORE???
+        pthread_mutex_unlock(&queueAccessMutex);
+        logSyncMech(logFd, tid, SYNC_OP_MUTEX_UNLOCK, SYNC_ROLE_CONSUMER, 0);
+
         // posts empty semaphore
         sem_post(&empty);
         sem_getvalue(&empty, &semValue);
-        logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, req.value.header.pid, semValue);
+        logSyncMechSem(logFd, tid, SYNC_OP_SEM_POST, SYNC_ROLE_CONSUMER, 0, semValue);
     }
 
     logBankOfficeClose(logFd, tid, pthread_self());
@@ -337,7 +351,8 @@ int main(int argc, char **argv)
         }
     }
 
-    for(int i = 1; i<threadNum; i++) {
+    for (int i = 1; i < threadNum; i++)
+    {
         sem_post(&full);
     }
 
