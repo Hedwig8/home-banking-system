@@ -351,7 +351,7 @@ int main(int argc, char **argv)
         }
     }
 
-    for (int i = 1; i < threadNum; i++)
+    for (int i = 0; i < threadNum; i++)
     {
         sem_post(&full);
     }

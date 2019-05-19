@@ -1,10 +1,12 @@
 # Change to executable name.
 
-PROG := user
+PROGUSR := user
+PROGSRV := server
 INC := 
+CC := gcc
 # Add whatever compiler flags you want.
 CXXFLAGS := 
-CXXFLAGS += -Wall -Wextra -Werror $(INC)
+CXXFLAGS += -Wall -Wextra -Werror -pthread -D_REENTRANT $(INC)
 
 # You MUST keep this for auto-dependency generation.
 CXXFLAGS += -MMD
@@ -16,33 +18,43 @@ LDLIBS :=
 LDFLAGS :=
 
 # Change 'src/' to where ever you hold src files relative to Makefile.
-SRCS := $(wildcard ./src/*.c)
+SRCSSRV := $(wildcard ./server_src/*.c)
+SRCSUSR := $(wildcard ./user_src/*.c)
 
 
 # Generate .o and .d filenames for each .cpp file.
 # Doesn't generate the ACTUAL files (compiler does).
 # Just generates the lists.
-OBJS := $(SRCS:.c=.o)
-DEPS := $(OBJS:.o=.d)
+OBJSSRV := $(SRCSSRV:.c=.o)
+DEPSSRV := $(OBJSSRV:.o=.d)
+
+OBJSUSR := $(SRCSUSR:.c=.o)
+DEPSUSR := $(OBJSUSR:.c=.o)
 
 # GNUMake feature, in case you have files called 'all' or 'clean'.
 .PHONY: all clean
 
 # Called when you run 'make'. This calls the line below.
-all: $(PROG)
+all: $(PROGSRV) $(PROGUSR)
+
 
 # Calls the compiler with flags to link all object files together.
-$(PROG): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDLIBS) $(OBJS) -o $(PROG)
+$(PROGSRV): $(OBJSSRV)
+	$(CC) $(CXXFLAGS) $(LDLIBS) $(OBJSSRV) -o $(PROGSRV)
+	rm -f $(OBJSSRV)
+
+$(PROGUSR): $(OBJSUSR)
+	$(CC) $(CXXFLAGS) $(LDLIBS) $(OBJSUSR) -o $(PROGUSR)
+	rm -f $(OBJSUSR)
 
 # Includes the dependency lists (.d files).
 -include $(DEPS)
 
 # Removes exectuable, object files, and dependency files.
 clean:
-	rm -f $(PROG)
+	rm -f $(PROGSRV)
+	rm -f $(PROGUSR)
 	rm -f $(DEPS) $(OBJS)
 	rm -f app.xml
 
 run: all
-	./$(PROG)
