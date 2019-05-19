@@ -323,7 +323,7 @@ int main(int argc, char **argv)
     {
         // reads request
         tlv_request_t req;
-        if (read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
+        while (read(fifoFd, &req, sizeof(tlv_request_t)) > 0)
         {
             logRequest(logFd, MAIN_THREAD_ID, &req);
 
