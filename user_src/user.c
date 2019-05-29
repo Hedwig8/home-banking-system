@@ -96,7 +96,7 @@ int argumentHandler(int argc, char *argv[])
             return 1;
         }
         //test password
-        if (strlen(password) < MIN_PASSWORD_LEN | strlen(password) > MAX_PASSWORD_LEN)
+        if ((strlen(password) < MIN_PASSWORD_LEN) || (strlen(password) > MAX_PASSWORD_LEN))
         {
             write(STDERR_FILENO, "password must have a valid length [8-20]\n", 42);
             return 1;
@@ -151,9 +151,12 @@ int requestPackagePrep(char *argv[], tlv_request_t *req)
         break;
     case OP_SHUTDOWN:
         break;
+    case __OP_MAX_NUMBER:
+        break;
     }
 
     req->length = sizeof(req->value);
+    return 0;
 }
 
 void closeFd(int r, void *arg)

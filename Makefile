@@ -6,7 +6,7 @@ INC :=
 CC := gcc
 # Add whatever compiler flags you want.
 CXXFLAGS := 
-CXXFLAGS += -Wall -Wextra -Werror -pthread -D_REENTRANT $(INC)
+CPPFLAGS += -Wall -pthread -D_REENTRANT $(INC)
 
 # You MUST keep this for auto-dependency generation.
 CXXFLAGS += -MMD
@@ -40,12 +40,12 @@ all: $(PROGSRV) $(PROGUSR)
 
 # Calls the compiler with flags to link all object files together.
 $(PROGSRV): $(OBJSSRV)
-	$(CC) $(CXXFLAGS) $(LDLIBS) $(OBJSSRV) -o $(PROGSRV)
-	rm -f $(OBJSSRV)
+	$(CC) $(CPPFLAGS) $(LDLIBS) $(OBJSSRV) -o $(PROGSRV)
+	
 
 $(PROGUSR): $(OBJSUSR)
 	$(CC) $(CXXFLAGS) $(LDLIBS) $(OBJSUSR) -o $(PROGUSR)
-	rm -f $(OBJSUSR)
+	
 
 # Includes the dependency lists (.d files).
 -include $(DEPS)
@@ -54,7 +54,7 @@ $(PROGUSR): $(OBJSUSR)
 clean:
 	rm -f $(PROGSRV)
 	rm -f $(PROGUSR)
-	rm -f $(DEPS) $(OBJS)
+	rm -f $(DEPSUSR) $(DEPSSRV) $(OBJSSRV) $(OBJSUSR)
 	rm -f app.xml
 
 run: all

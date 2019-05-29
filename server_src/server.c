@@ -156,7 +156,7 @@ void sendReply(tlv_reply_t *rep, int pid, int tid)
         return;
     }
 
-    int size = write(repFifo, rep, sizeof(tlv_reply_t));
+    write(repFifo, rep, sizeof(tlv_reply_t));
 
     close(repFifo);
 }
@@ -236,6 +236,8 @@ void *thr_open_office(void *arg)
     }
 
     logBankOfficeClose(logFd, tid, pthread_self());
+
+    return NULL;
 }
 
 int main(int argc, char **argv)
